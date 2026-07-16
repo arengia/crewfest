@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Builds the app on a bare runner (no Docker) and drives it through
+  # scripts/smoke-e2e.sh, including a REAL PDF export via Puppeteer against the
+  # runner's preinstalled Chrome. Runs on every push (any branch) and every PR.
+  test:
+    name: Build, unit build + E2E smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          # We never launch puppeteer's own bundled Chromium here — it uses the
+          # runner's system Chrome via CHROMIUM_PATH (see step below) — so skip the
+          # download entirely, same as the Dockerfile does for the runtime image.
+          PUPPETEER_SKIP_DOWNLOAD: true
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Ubuntu GitHub-hosted runners ship Google Chrome preinstalled as a regular
+      # apt package. Deliberately NOT `apt-get install chromium-browser`: on
+      # Ubuntu 22.04+ that package is a snap stub, not a real binary, and fails
+      # non-interactively in CI. Preinstalled Chrome is the common, reliable path.
+      - name: Locate a system Chrome for Puppeteer
+        id: chrome
+        run: |
+          CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo "No system Chrome/Chromium found on this runner" >&2
+            exit 1
+          fi
+          echo "Using $CHROME_BIN"
+          "$CHROME_BIN" --version
+          echo "path=$CHROME_BIN" >> "$GITHUB_OUTPUT"
+
+      - name: Start server (temp DB, test secrets)
+        env:
+          NODE_ENV: production
+          PORT: 3001
+          DB_PATH: .ci-tmp/crewfest.db
+          UPLOADS_DIR: .ci-tmp/uploads
+          SESSION_SECRET: ci-smoke-test-secret-${{ github.run_id }}-not-for-production
+          COOKIE_SECURE: false
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: ci-smoke-test-password
+          CHROMIUM_PATH: ${{ steps.chrome.outputs.path }}
+        run: |
+          mkdir -p .ci-tmp
+          nohup node dist/index.js > .ci-tmp/server.log 2>&1 &
+          echo $! > .ci-tmp/server.pid
+
+      - name: Wait for server to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/health >/dev/null; then
+              echo "server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy in time" >&2
+          cat .ci-tmp/server.log || true
+          exit 1
+
+      - name: Run scripts/smoke-e2e.sh
+        env:
+          BASE_URL: http://localhost:3001
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: ci-smoke-test-password
+        run: ./scripts/smoke-e2e.sh
+
+      - name: Server log (always, for debugging)
+        if: always()
+        run: cat .ci-tmp/server.log || true
+
+      - name: Stop server
+        if: always()
+        run: |
+          [ -f .ci-tmp/server.pid ] && kill "$(cat .ci-tmp/server.pid)" 2>/dev/null || true
+
+  # Builds the real container image and, on the branches/tags that matter, pushes
+  # it to GHCR. Runs on pushes to main/release/open-source and on v* tags — NOT
+  # on pull requests (a PR never has push rights to GHCR to begin with).
+  docker:
+    name: Docker build & publish
+    needs: test
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/release/open-source' ||
+        startsWith(github.ref, 'refs/tags/v')
+      )
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/arengia/crewfest
+          # We control tags explicitly instead of the action's auto "latest"
+          # heuristic — latest is only wanted on real v* releases, not every
+          # push to main.
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # Single-platform (amd64) build, loaded into the local Docker daemon so it can
+      # actually be run and smoke-tested below. A multi-arch manifest built with
+      # --push has no locally runnable image, and running the arm64 build under
+      # QEMU emulation just to launch Chromium for the PDF export would be slow and
+      # flaky — amd64 is representative enough for a smoke test.
+      - name: Build amd64 image for the container smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: crewfest:smoke-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run the built image
+        run: |
+          docker run -d --name crewfest-smoke -p 3001:3001 \
+            -e NODE_ENV=production \
+            -e SESSION_SECRET="$(openssl rand -hex 32)" \
+            -e COOKIE_SECURE=false \
+            -e ADMIN_USERNAME=admin \
+            -e ADMIN_PASSWORD=ci-smoke-test-password \
+            crewfest:smoke-test
+
+      - name: Wait for container to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/health >/dev/null; then
+              echo "container is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "container did not become healthy in time" >&2
+          docker logs crewfest-smoke || true
+          exit 1
+
+      - name: Run scripts/smoke-e2e.sh against the container
+        env:
+          BASE_URL: http://localhost:3001
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: ci-smoke-test-password
+        run: ./scripts/smoke-e2e.sh
+
+      - name: Container log (always, for debugging)
+        if: always()
+        run: docker logs crewfest-smoke || true
+
+      - name: Stop and remove the smoke-test container
+        if: always()
+        run: docker rm -f -v crewfest-smoke || true
+
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push on main/tags) multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

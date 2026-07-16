@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Self-hosted Material Symbols Outlined — subsetted to exactly the icon
+   ligatures this app uses (see public/assets/fonts/LICENSE-material-symbols.txt,
+   Apache-2.0). Two static instances instead of the original variable font:
+   the UI only ever renders weight 400 / opsz 24, and FILL 1 only for a single
+   icon (.fill), so static faces are far smaller than a full variable font. */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/material-symbols-outlined.woff2') format('woff2');
+  unicode-range: U+2c, U+5f, U+61-69, U+6b-70, U+72-79;
+}
+@font-face {
+  font-family: 'Material Symbols Outlined Fill';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/material-symbols-outlined-fill.woff2') format('woff2');
+  unicode-range: U+5f, U+61, U+63, U+65, U+69, U+6c, U+6e-6f, U+73-74;
+}
+
+/* Shared rules that used to be duplicated in an inline <style> block on every
+   page (layout.ts, apply-form.ts, login.ts, crew-login.ts, setup.ts). */
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+.material-symbols-outlined.fill {
+  font-family: 'Material Symbols Outlined Fill';
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+/* Tailwind display utilities (.flex/.block/.grid) otherwise beat the [hidden]
+   attribute (UA stylesheet) — force it so el.hidden = true really hides
+   (used by the shift-plan view switcher). */
+[hidden] {
+  display: none !important;
+}

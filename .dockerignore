@@ -1,0 +1,27 @@
+# Reproduced in the image by `npm ci` / `npm run build` — never copy from the host.
+node_modules
+dist
+public/assets/tailwind.css
+
+# Runtime data — never bake applicant data or local DB state into an image.
+data
+var
+.smoke-tmp
+
+# Secrets — .env.example is the only env file that belongs in the image/build context.
+.env
+.env.*
+!.env.example
+
+# VCS / editor / planning tooling.
+.git
+.gitignore
+.claude
+.planning
+*.code-workspace
+
+# Internal docs — not part of the open-source release surface, no reason to ship them
+# in a build context or image layer.
+CLAUDE.md
+schichtplanungstool.md
+files

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+public/assets/tailwind.css
+data/
+var/
+.smoke-tmp/
+.env
+.env.shifts
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.claude/
+.clone/
+.planning/
+*.code-workspace
+
+# interne Dateien (nicht Teil des Open-Source-Release)
+CLAUDE.md
+schichtplanungstool.md
+files/
