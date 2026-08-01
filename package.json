@@ -1,6 +1,6 @@
 {
   "name": "crewfest",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lightweight self-hosted shift planning for festival crews — applications, scheduling, exports. Battle-tested at a real festival.",
   "main": "dist/index.js",
   "scripts": {
