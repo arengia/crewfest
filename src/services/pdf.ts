@@ -20,7 +20,12 @@ export async function generatePdf(
   const b = await getBrowser()
   const page = await b.newPage()
   try {
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
+    // 'load' rather than the old 'networkidle0': Puppeteer dropped the
+    // networkidle values from setContent's waitUntil union. Nothing is lost
+    // here, because every PDF template in src/views/pdf-*.ts renders from a
+    // self-contained HTML string with inline styles and no external images,
+    // stylesheets or fonts. There is no network activity to idle on.
+    await page.setContent(htmlContent, { waitUntil: 'load' })
     const pdf = await page.pdf({
       format: 'A4',
       landscape: options?.landscape ?? false,
