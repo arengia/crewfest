@@ -1,0 +1,34 @@
+version: 2
+
+# This repository is maintained on a best effort basis (see README), so the goal
+# here is a small number of reviewable pull requests rather than a constant
+# stream of them. Minor and patch updates are therefore grouped into a single
+# monthly PR per ecosystem. Security updates are unaffected by this schedule:
+# Dependabot still opens those as soon as an advisory lands.
+#
+# CI (.github/workflows/ci.yml) builds every PR and runs scripts/smoke-e2e.sh
+# against a real server, including a real Puppeteer PDF export, so a dependency
+# PR that breaks the app fails visibly before it can be merged.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - '*'
