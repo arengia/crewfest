@@ -2,13 +2,26 @@ version: 2
 
 # This repository is maintained on a best effort basis (see README), so the goal
 # here is a small number of reviewable pull requests rather than a constant
-# stream of them. Minor and patch updates are therefore grouped into a single
-# monthly PR per ecosystem. Security updates are unaffected by this schedule:
+# stream of them. Security updates are unaffected by the schedule below:
 # Dependabot still opens those as soon as an advisory lands.
+#
+# Every update type is assigned to a group on purpose. A group that only lists
+# `minor` and `patch` is not a bundle, it is a partial bundle: whatever falls
+# outside it still arrives as one pull request per package. The first run of
+# this config demonstrated that by opening five separate major version PRs
+# alongside the grouped one.
+#
+# Major versions get their own group rather than being ignored. Ignoring them
+# would also suppress security updates that can only be resolved by a major
+# upgrade, which is the opposite of what this file is for. Keeping them apart
+# from the minor and patch group means a breaking major upgrade cannot block
+# the routine updates from being merged.
 #
 # CI (.github/workflows/ci.yml) builds every PR and runs scripts/smoke-e2e.sh
 # against a real server, including a real Puppeteer PDF export, so a dependency
-# PR that breaks the app fails visibly before it can be merged.
+# PR that breaks the app fails visibly before it can be merged. Note that a
+# green smoke test is evidence, not a guarantee: it exercises the main flows,
+# not every API a major upgrade may have changed.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -22,6 +35,11 @@ updates:
         update-types:
           - minor
           - patch
+      npm-major:
+        patterns:
+          - '*'
+        update-types:
+          - major
 
   - package-ecosystem: github-actions
     directory: /
